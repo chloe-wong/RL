@@ -1,0 +1,54 @@
+# Baseline for the collectives lane: the upstream Nano V3 recipe plus the two
+# allocator settings that run F measured as a 1.49x speedup (1.79s -> 1.20s median
+# step). Every collectives experiment is measured against this, not against the
+# untuned recipe, so that a win here is a win on top of what is already fixed.
+#
+#   empty_cache_after_train: false   torch.cuda.empty_cache() after every step was
+#                                    30.3% of host CPU time on rank 0, which the other
+#                                    seven ranks absorb as time spent waiting in NCCL.
+#   expandable_segments:True         required alongside it; without it the run OOMs at
+#                                    step 14 from allocator fragmentation.
+defaults: ../../sft.yaml
+sft:
+  max_num_steps: 100
+checkpointing:
+  enabled: false
+policy:
+  model_name: nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-Base-BF16
+  train_global_batch_size: 16
+  max_total_sequence_length: 2048
+  optimizer:
+    kwargs:
+      lr: 1.5e-05
+  hf_config_overrides:
+    # Keep as 0.0, not 0: Hugging Face strict config validation declares
+    # router_aux_loss_coef as float and rejects YAML's integer 0.
+    router_aux_loss_coef: 0.0
+  dtensor_cfg:
+    expert_parallel_size: 8
+    empty_cache_after_train: false
+    env_vars:
+      PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+    automodel_kwargs:
+      backend:
+        _target_: nemo_automodel.components.models.common.utils.BackendConfig
+        attn: te
+        linear: te
+        rms_norm: torch_fp32
+        experts: torch_mm
+        # enable_deepep is removed upstream and ignored with a warning; the live
+        # knobs are dispatcher and experts. Left here only to match the baseline
+        # recipe bit for bit -- it is fixed in the dispatcher experiments.
+        enable_deepep: true
+        rope_fusion: false
+        enable_hf_state_dict_adapter: true
+logger:
+  wandb:
+    project: nemo-rl
+    name: sft-nanov3-collectives
+  tensorboard:
+    log_dir: tb_logs-sft-nanov3-collectives
+  mlflow:
+    run_name: sft-nanov3-collectives
+cluster:
+  gpus_per_node: 8
