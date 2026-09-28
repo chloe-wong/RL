@@ -35,8 +35,12 @@ def get_nsight_config_if_pattern_matches(worker_name: str) -> dict[str, Any]:
         When NRL_NSYS_EXTRA_OPTIONS is set, its key/value pairs are merged into the
         nsight config (user-supplied keys override the built-in defaults).
     """
-    assert not (bool(NRL_NSYS_WORKER_PATTERNS) ^ bool(NRL_NSYS_PROFILE_STEP_RANGE)), (
-        "Either both NRL_NSYS_WORKER_PATTERNS and NRL_NSYS_PROFILE_STEP_RANGE must be set, or neither. See https://github.com/NVIDIA/NeMo-RL/tree/main/docs/nsys-profiling.md for more details."
+    # The step range is shared with the torch profiler and the memory snapshot, so it
+    # is legitimately set when no nsys pattern is. The reverse is still an error.
+    assert not (
+        bool(NRL_NSYS_WORKER_PATTERNS) and not bool(NRL_NSYS_PROFILE_STEP_RANGE)
+    ), (
+        "NRL_NSYS_WORKER_PATTERNS requires NRL_NSYS_PROFILE_STEP_RANGE. See https://github.com/NVIDIA/NeMo-RL/tree/main/docs/nsys-profiling.md for more details."
     )
 
     patterns_env = NRL_NSYS_WORKER_PATTERNS

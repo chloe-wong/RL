@@ -60,11 +60,18 @@ class ProfilablePolicy(Protocol):
 
 
 def maybe_gpu_profile_step(policy: ProfilablePolicy, step: int):
-    assert not (bool(NRL_NSYS_WORKER_PATTERNS) ^ bool(NRL_NSYS_PROFILE_STEP_RANGE)), (
-        "Either both NRL_NSYS_WORKER_PATTERNS and NRL_NSYS_PROFILE_STEP_RANGE must be set, or neither. See https://github.com/NVIDIA/NeMo-RL/tree/main/docs/nsys-profiling.md for more details."
+    # NRL_NSYS_PROFILE_STEP_RANGE selects the steps for every profiler, not just nsys:
+    # start_gpu_profiling/stop_gpu_profiling also drive the torch profiler and the CUDA
+    # memory snapshot. Gating on NRL_NSYS_WORKER_PATTERNS alone made those two
+    # reachable only by also launching nsys, which shares CUPTI with them.
+    any_profiler = bool(
+        NRL_NSYS_WORKER_PATTERNS or NRL_TORCH_PROFILE_DIR or NRL_MEMORY_SNAPSHOT_DIR
+    )
+    assert not (any_profiler ^ bool(NRL_NSYS_PROFILE_STEP_RANGE)), (
+        "NRL_NSYS_PROFILE_STEP_RANGE must be set together with one of NRL_NSYS_WORKER_PATTERNS, NRL_TORCH_PROFILE_DIR or NRL_MEMORY_SNAPSHOT_DIR, and left unset otherwise. See https://github.com/NVIDIA/NeMo-RL/tree/main/docs/nsys-profiling.md for more details."
     )
 
-    if not NRL_NSYS_WORKER_PATTERNS:
+    if not any_profiler:
         return
 
     NSYS_START_STEP, NSYS_STOP_STEP = NRL_NSYS_PROFILE_STEP_RANGE.split(":")
