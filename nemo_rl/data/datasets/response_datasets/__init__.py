@@ -31,6 +31,7 @@ from nemo_rl.data.datasets.response_datasets.general_conversations_dataset impor
 )
 from nemo_rl.data.datasets.response_datasets.geometry3k import Geometry3KDataset
 from nemo_rl.data.datasets.response_datasets.gsm8k import GSM8KDataset
+from nemo_rl.data.datasets.response_datasets.hellaswag import HellaSwagDataset
 from nemo_rl.data.datasets.response_datasets.helpsteer3 import HelpSteer3Dataset
 from nemo_rl.data.datasets.response_datasets.intent import (
     IntentBenchDataset,
@@ -76,6 +77,8 @@ DATASET_REGISTRY = {
     "GSM8K": GSM8KDataset,
     "geometry3k": Geometry3KDataset,
     "mmpr-tiny": MMPRTinyDataset,
+    "hellaswag": HellaSwagDataset,
+    "hellaswag-completion": partial(HellaSwagDataset, style="completion"),
     "HelpSteer3": HelpSteer3Dataset,
     "intent-train": IntentTrainDataset,
     "intent-bench": IntentBenchDataset,
