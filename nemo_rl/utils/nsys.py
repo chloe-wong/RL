@@ -123,3 +123,50 @@ def wrap_with_nvtx_name(name: str):
         return wrapper
 
     return decorator
+
+
+# Optional PyTorch profiler and CUDA memory snapshot, driven by the same
+# NRL_NSYS_PROFILE_STEP_RANGE start/stop calls. Each writes one file per rank.
+# Do not combine NRL_TORCH_PROFILE_DIR with nsys or ncu: they share CUPTI.
+NRL_TORCH_PROFILE_DIR = os.environ.get("NRL_TORCH_PROFILE_DIR", "")
+NRL_MEMORY_SNAPSHOT_DIR = os.environ.get("NRL_MEMORY_SNAPSHOT_DIR", "")
+_memory_recording = False
+
+
+def start_torch_profiling() -> Any:
+    """Start the PyTorch profiler and/or CUDA memory history if enabled."""
+    global _memory_recording
+    if NRL_MEMORY_SNAPSHOT_DIR:
+        torch.cuda.memory._record_memory_history(max_entries=500_000)
+        _memory_recording = True
+    if not NRL_TORCH_PROFILE_DIR:
+        return None
+    prof = torch.profiler.profile(
+        activities=[
+            torch.profiler.ProfilerActivity.CPU,
+            torch.profiler.ProfilerActivity.CUDA,
+        ],
+        record_shapes=True,
+    )
+    prof.start()
+    return prof
+
+
+def stop_torch_profiling(prof: Any) -> None:
+    """Stop profilers started by start_torch_profiling and write per-rank files."""
+    rank = torch.distributed.get_rank() if torch.distributed.is_initialized() else 0
+    if prof is not None:
+        prof.stop()
+        os.makedirs(NRL_TORCH_PROFILE_DIR, exist_ok=True)
+        prof.export_chrome_trace(
+            os.path.join(NRL_TORCH_PROFILE_DIR, f"rank{rank}.pt.trace.json.gz")
+        )
+    global _memory_recording
+    # stop can run twice (step range end, then atexit); only dump while recording.
+    if _memory_recording:
+        _memory_recording = False
+        os.makedirs(NRL_MEMORY_SNAPSHOT_DIR, exist_ok=True)
+        torch.cuda.memory._dump_snapshot(
+            os.path.join(NRL_MEMORY_SNAPSHOT_DIR, f"rank{rank}.pickle")
+        )
+        torch.cuda.memory._record_memory_history(enabled=None)

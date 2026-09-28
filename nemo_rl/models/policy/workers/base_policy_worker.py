@@ -21,7 +21,11 @@ from nemo_rl.distributed.batched_data_dict import BatchedDataDict
 from nemo_rl.models.generation.interfaces import RefitPayloadMode
 from nemo_rl.models.policy.interfaces import ReferenceLogprobOutputSpec
 from nemo_rl.telemetry.setup import shutdown_telemetry
-from nemo_rl.utils.nsys import wrap_with_nvtx_name
+from nemo_rl.utils.nsys import (
+    start_torch_profiling,
+    stop_torch_profiling,
+    wrap_with_nvtx_name,
+)
 
 
 class AbstractPolicyWorker:
@@ -318,10 +322,13 @@ class AbstractPolicyWorker:
     def start_gpu_profiling(self) -> None:
         """Start GPU profiling."""
         torch.cuda.profiler.start()
+        self._torch_prof = start_torch_profiling()
 
     def stop_gpu_profiling(self) -> None:
         """Stop GPU profiling."""
         torch.cuda.profiler.stop()
+        stop_torch_profiling(getattr(self, "_torch_prof", None))
+        self._torch_prof = None
 
     def report_node_ip_and_gpu_id(self) -> tuple[str, int]:
         """Report the node IP and GPU ID of the current worker."""
