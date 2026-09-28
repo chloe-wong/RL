@@ -29,6 +29,7 @@ from nemo_rl.utils.flops_formulas import (
     deepseekv3,
     glm_moe_dsa,
     llama,
+    nemotronh,
     qwen2,
     qwen3,
 )
@@ -166,6 +167,32 @@ def convert_config_to_flops_config(
             mtp_num_layers=0,
             causal_self_attn=True,
         ), deepseekv3
+    elif config.__class__.model_type == "nemotron_h":
+        return FLOPSConfig(
+            gbs=0,
+            hs=config.hidden_size,
+            layers=config.num_hidden_layers,
+            ffn_hs=config.intermediate_size,
+            attention_heads=config.num_attention_heads,
+            query_groups=config.num_key_value_heads,
+            head_dim=getattr(config, "head_dim", None),
+            vocab_size=config.vocab_size,
+            # Nemotron-H expert and MLP blocks are up -> act -> down with no gate
+            # projection (mlp_hidden_act is relu2), so they are not gated.
+            gated_linear_unit=False,
+            moe_router_topk=config.num_experts_per_tok,
+            moe_ffn_hidden_size=config.moe_intermediate_size,
+            moe_shared_expert_intermediate_size=(
+                config.moe_shared_expert_intermediate_size * config.n_shared_experts
+            ),
+            is_hybrid_model=True,
+            hybrid_override_pattern=config.hybrid_override_pattern,
+            # n_groups is the Mamba2 group count; n_group/topk_group are MoE routing.
+            mamba_state_dim=config.ssm_state_size,
+            mamba_head_dim=config.mamba_head_dim,
+            mamba_num_groups=config.n_groups,
+            mamba_num_heads=config.mamba_num_heads,
+        ), nemotronh
     elif config.__class__.model_type == "glm_moe_dsa":
         return FLOPSConfig(
             gbs=0,

@@ -52,6 +52,7 @@ class FLOPSConfig:
     moe_ffn_hidden_size: Optional[int] = None
     mtp_num_layers: Optional[int] = None
     causal_self_attn: Optional[bool] = None
+    gated_linear_unit: Optional[bool] = None
     is_hybrid_model: bool = False
     hybrid_override_pattern: Optional[str] = None
     mamba_state_dim: Optional[int] = None
@@ -603,25 +604,63 @@ def _mamba_layer_flops(config: FLOPSConfig):
     )
 
 
+def _moe_layer_flops(config: FLOPSConfig):
+    """Model FLOPs for a mixture-of-experts layer.
+
+    Only the top-k routed experts run for a given token, so the routed term scales
+    with moe_router_topk and not with the total expert count. Shared experts run for
+    every token. An expert is a two-matrix (up, down) MLP, or three matrices when it
+    is gated. The router gate is under half a percent of the layer and is omitted.
+    """
+    assert config.moe_router_topk is not None
+    assert config.moe_ffn_hidden_size is not None
+
+    matrices_per_expert = 3 if config.gated_linear_unit else 2
+    routed = (
+        config.moe_router_topk
+        * matrices_per_expert
+        * config.hs
+        * config.moe_ffn_hidden_size
+    )
+    shared = 0
+    if config.moe_shared_expert_intermediate_size:
+        shared = (
+            matrices_per_expert * config.hs * config.moe_shared_expert_intermediate_size
+        )
+    return 6 * config.gbs * config.enc_seq_len * (routed + shared)
+
+
 def _hybrid_model_flops(config: FLOPSConfig):
-    """Model FLOPs for hybrid model."""
+    """Model FLOPs for hybrid model.
+
+    hybrid_override_pattern names one layer each: "M" Mamba, "*" attention, "-" dense
+    MLP, "E" mixture-of-experts. An unrecognised character raises rather than being
+    skipped, because a silently uncounted layer type yields a plausible-looking but
+    wrong FLOPs total. Each per-layer formula is called only when that layer type is
+    present, since the formulas assert on fields other models never set.
+    """
     assert config.is_hybrid_model == True
     assert config.hybrid_override_pattern is not None
 
-    num_attn_layers, num_mamba_layers, num_mlp_layers = 0, 0, 0
+    counts = {"M": 0, "*": 0, "-": 0, "E": 0}
     for c in config.hybrid_override_pattern:
-        if c == "M":
-            num_mamba_layers += 1
-        elif c == "-":
-            num_mlp_layers += 1
-        elif c == "*":
-            num_attn_layers += 1
-    return (
-        num_attn_layers * _non_mla_attn_layer_flops(config)
-        + num_mamba_layers * _mamba_layer_flops(config)
-        + num_mlp_layers * _mlp_layer_flops(config)
-        + 6 * config.gbs * config.enc_seq_len * config.hs * config.vocab_size
-    )
+        if c not in counts:
+            raise ValueError(
+                f"Unknown layer type {c!r} in hybrid_override_pattern "
+                f"{config.hybrid_override_pattern!r}; expected one of {sorted(counts)}."
+            )
+        counts[c] += 1
+
+    total = 6 * config.gbs * config.enc_seq_len * config.hs * config.vocab_size
+    if counts["*"]:
+        total += counts["*"] * _non_mla_attn_layer_flops(config)
+    if counts["M"]:
+        total += counts["M"] * _mamba_layer_flops(config)
+    if counts["-"]:
+        total += counts["-"] * _mlp_layer_flops(config)
+    if counts["E"]:
+        total += counts["E"] * _moe_layer_flops(config)
+    return total
 
 
 def nemotronh(config: FLOPSConfig):
