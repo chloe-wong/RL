@@ -13,6 +13,7 @@
 # limitations under the License.
 import importlib
 import math
+import fnmatch
 import os
 import sys
 import time
@@ -632,6 +633,13 @@ class RayWorkerGroup:
                 )  # to remove the "bin/python" suffix
                 runtime_env["env_vars"]["VIRTUAL_ENV"] = py_venv
                 runtime_env["env_vars"]["UV_PROJECT_ENVIRONMENT"] = py_venv
+                # Optional profiler wrapper (e.g. ncu) for workers whose name matches
+                # NRL_WORKER_PY_PREFIX_PATTERN. Ray runs py_executable through a shell.
+                py_prefix = os.environ.get("NRL_WORKER_PY_PREFIX", "")
+                if py_prefix and fnmatch.fnmatch(
+                    name, os.environ.get("NRL_WORKER_PY_PREFIX_PATTERN", "*")
+                ):
+                    runtime_env["py_executable"] = f"{py_prefix} {py_executable}"
 
                 extra_options = {"runtime_env": runtime_env, "name": name}
 
