@@ -224,6 +224,8 @@ class DTensorConfig(TypedDict):
     automodel_kwargs: NotRequired[AutomodelKwargs]
     # Runtime
     clear_cache_every_n_steps: NotRequired[int | None]
+    # Call torch.cuda.empty_cache() at the end of every train() step. Default True.
+    empty_cache_after_train: NotRequired[bool]
     checkpoint: NotRequired[AutomodelCheckpointConfig]
 
 

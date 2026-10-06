@@ -568,7 +568,8 @@ class DTensorPolicyWorkerV2Impl(
                 self.scheduler.step()
             # dynamic batch and sequence dims causes alot of fragmentation, so clear
             # the memory allocator before moving on
-            torch.cuda.empty_cache()
+            if self.cfg["dtensor_cfg"].get("empty_cache_after_train", True):
+                torch.cuda.empty_cache()
 
             # Aggregate training statistics across microbatches and ranks
             metrics = aggregate_training_statistics(
