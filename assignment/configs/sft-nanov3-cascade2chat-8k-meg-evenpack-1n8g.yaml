@@ -1,0 +1,5 @@
+# Megatron try8 + even_bin_count packing (balances tokens across DP ranks).
+defaults: sft-nanov3-cascade2chat-8k-megatron-1n8g.yaml
+policy:
+  sequence_packing:
+    algorithm: even_bin_count

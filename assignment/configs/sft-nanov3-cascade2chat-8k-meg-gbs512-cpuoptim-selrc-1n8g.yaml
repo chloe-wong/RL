@@ -1,0 +1,10 @@
+# GBS 512 evenpack + optimizer state on CPU (frees ~25-30 GB/GPU) + selective recompute.
+defaults: sft-nanov3-cascade2chat-8k-meg-evenpack-gbs512-1n8g.yaml
+policy:
+  megatron_cfg:
+    recompute_granularity: selective
+    recompute_modules: [moe_act, layernorm, core_attn]
+    optimizer:
+      optimizer_cpu_offload: true
+      optimizer_offload_fraction: 1.0
+      overlap_cpu_optimizer_d2h_h2d: true

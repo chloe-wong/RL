@@ -1,0 +1,6 @@
+# fuseloss + fused Triton log-prob kernel (nemo_rl/distributed/triton_logprob.py).
+defaults: sft-nanov3-cascade2chat-8k-meg-seo-fuseloss-1n8g.yaml
+policy:
+  megatron_cfg:
+    env_vars:
+      NRL_TRITON_LOGPROB: "1"

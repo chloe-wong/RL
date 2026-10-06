@@ -1,0 +1,9 @@
+# Nsight Compute variant: MoE token dispatch through torch (NCCL all-gather /
+# reduce-scatter) instead of DeepEP. Under ncu kernel replay, DeepEP runs hit Xid 31
+# MMU faults at the same virtual address on every rank. Compute kernels are the same.
+defaults: sft-nanov3-cascade2chat-8k-best-defaultalloc-1n8g.yaml
+policy:
+  dtensor_cfg:
+    automodel_kwargs:
+      backend:
+        dispatcher: torch

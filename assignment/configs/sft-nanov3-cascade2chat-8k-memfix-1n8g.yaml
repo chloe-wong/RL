@@ -1,0 +1,13 @@
+# 8k context on the 4k workload, with the three memory changes together:
+#   chunked cross-entropy (logprob_chunk_size), bf16 FSDP module outputs, and
+#   expandable_segments to stop fragmentation OOMs on the per-microbatch logits buffers.
+defaults: sft-nanov3-cascade2chat-4k-1n8g.yaml
+policy:
+  max_total_sequence_length: 8192
+  logprob_chunk_size: 1024
+  dynamic_batching:
+    train_mb_tokens: 8192
+  dtensor_cfg:
+    fsdp_output_dtype: bfloat16
+    env_vars:
+      PYTORCH_CUDA_ALLOC_CONF: "expandable_segments:True"

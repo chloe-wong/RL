@@ -1,0 +1,5 @@
+# evenpack + shared-expert overlap + loss over the whole pack (no per-sequence logits slices).
+defaults: sft-nanov3-cascade2chat-8k-meg-evenpack-seo-1n8g.yaml
+policy:
+  sequence_packing:
+    fuse_loss: true

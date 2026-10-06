@@ -1,0 +1,19 @@
+# DeepEP arm A1: dispatcher_async_dispatch=true.
+# The dispatch returns without the compute stream waiting on the all-to-all
+# (async_finish), and dispatched tensors are allocated on the comm stream.
+# Targets the measured 0.5% DeepEP/compute overlap.
+defaults: sft-nanov3-cascade2chat-8k-best-1n8g.yaml
+policy:
+  dtensor_cfg:
+    automodel_kwargs:
+      backend:
+        _target_: nemo_automodel.components.models.common.utils.BackendConfig
+        attn: te
+        linear: te
+        rms_norm: torch_fp32
+        experts: torch_mm
+        dispatcher: deepep
+        dispatcher_num_sms: 20
+        dispatcher_async_dispatch: true
+        enable_hf_state_dict_adapter: true
+        rope_fusion: false

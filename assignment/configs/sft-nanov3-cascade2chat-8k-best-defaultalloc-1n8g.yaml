@@ -1,0 +1,10 @@
+# Best 8k setup with the default caching allocator (no expandable_segments, per-step
+# empty_cache kept), for Nsight Compute: under ncu kernel replay the expandable-segments
+# run hit Xid 31 MMU faults on every rank. Kernels are the same; it fragments after
+# ~20 steps, and ncu only profiles step 4.
+defaults: sft-nanov3-cascade2chat-8k-chunkedce-bf16out-1n8g.yaml
+policy:
+  optimizer:
+    kwargs:
+      foreach: false
+      fused: true

@@ -1,0 +1,5 @@
+# FP8 variant with 8k-token packs (the 16k packs OOM at step 1 with FP8 weight copies).
+defaults: sft-nanov3-cascade2chat-8k-meg-evenpack-fp8-1n8g.yaml
+policy:
+  sequence_packing:
+    train_mb_tokens: 8192

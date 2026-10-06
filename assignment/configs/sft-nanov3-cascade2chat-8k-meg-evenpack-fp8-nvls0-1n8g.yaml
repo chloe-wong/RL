@@ -1,0 +1,6 @@
+# FP8 evenpack with NVLS off (frees NCCL multicast buffers for the FP8 weight copies).
+defaults: sft-nanov3-cascade2chat-8k-meg-evenpack-fp8-1n8g.yaml
+policy:
+  megatron_cfg:
+    env_vars:
+      NCCL_NVLS_ENABLE: "0"

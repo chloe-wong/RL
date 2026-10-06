@@ -1,0 +1,54 @@
+# Nemotron-Cascade-2 chat SFT workload (same data, tokenizer, GBS 128 and 8k max sample
+# length as the DTensor runs) on the NeMo RL Megatron-Core backend:
+#   - sequence packing into 16k-token microbatches (Megatron passes packed-sequence
+#     boundaries to attention and Mamba, unlike the DTensor path)
+#   - chunked logprobs (logprob_chunk_size + defer_fp32_logits): fused linear
+#     cross-entropy is not implemented for the NemotronH HybridModel in this Megatron.
+#   - EP8, TP1, distributed optimizer with overlapped bf16 grad reduce / param gather
+#   - bf16 Adam moments (precision-aware optimizer): with EP8 on 8 GPUs the expert
+#     data-parallel size is 1, so expert optimizer state is not sharded (~44 GB/GPU fp32)
+#   - full activation recompute: without it, or with MoE-only recompute, step 1 or 2
+#     OOMs (resident state ~64 GB/GPU before activations)
+#   - expandable_segments with no per-step cache emptying (empty_unused_memory_level 0),
+#     as in DTensor allocator experiment A2
+defaults: sft-nanov3-cascade2chat-4k-1n8g.yaml
+policy:
+  max_total_sequence_length: 8192
+  make_sequence_length_divisible_by: 64
+  optimizer: null
+  logprob_chunk_size: 1024
+  dynamic_batching:
+    enabled: false
+  sequence_packing:
+    enabled: true
+    train_mb_tokens: 16384
+    algorithm: modified_first_fit_decreasing
+    sequence_length_round: 64
+  dtensor_cfg:
+    enabled: false
+  megatron_cfg:
+    enabled: true
+    use_fused_linear_logprobs: false
+    defer_fp32_logits: true
+    tensor_model_parallel_size: 1
+    pipeline_model_parallel_size: 1
+    context_parallel_size: 1
+    expert_model_parallel_size: 8
+    expert_tensor_parallel_size: 1
+    sequence_parallel: false
+    bias_activation_fusion: false
+    activation_checkpointing: true
+    recompute_granularity: full
+    empty_unused_memory_level: 0
+    env_vars:
+      PYTORCH_CUDA_ALLOC_CONF: "expandable_segments:True"
+    optimizer:
+      lr: 1.5e-5
+      min_lr: 1.5e-5
+      weight_decay: 0.1
+      use_precision_aware_optimizer: true
+      exp_avg_dtype: bf16
+      exp_avg_sq_dtype: bf16
+    scheduler:
+      lr_warmup_iters: 0
+      lr_warmup_init: 1.5e-5

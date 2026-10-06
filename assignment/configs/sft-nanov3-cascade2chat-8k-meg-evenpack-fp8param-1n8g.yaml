@@ -1,0 +1,6 @@
+# FP8 GEMMs with FP8 parameter storage (no separate BF16 weight copy).
+defaults: sft-nanov3-cascade2chat-8k-meg-evenpack-fp8-1n8g.yaml
+policy:
+  megatron_cfg:
+    fp8_cfg:
+      fp8_param: true

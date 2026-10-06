@@ -1,0 +1,56 @@
+# Realistic SFT workload for Nemotron-Nano-V3 on 1 node x 8 H100.
+#
+# Same backend as the upstream recipe (DTensor V2 / Automodel, FSDP2 + EP8, TE, DeepEP);
+# only the workload changes:
+#   data   NVIDIA Nemotron-Cascade-2 SFT "chat" subset (multi-turn chat with reasoning),
+#          seeded 20k-conversation sample. Mean 3,559 tokens, p50 2,265, p99 16,843.
+#   seq    4k max: keeps 69% of conversations, mean 1,613 tokens (longer ones get
+#          loss_multiplier 0). This is the longest context that fits with the framework
+#          as is. The SFT loss materializes the full-vocabulary logits for the whole
+#          microbatch (tokens x 131k vocab, bf16 plus fp32 copies for log_softmax), and
+#          dynamic batching needs microbatch tokens >= max sequence length:
+#            16k: OOM allocating 8.00 GiB (fp32 logits) in step 2.
+#            8k:  OOM allocating 3.09 GiB in log_softmax in step 2, 71 GiB allocated.
+#          Step 1 fits because AdamW creates its fp32 state at the first optimizer.step().
+#          logprob_chunk_size only chunks inference logprobs, not the training loss.
+#   batch  GBS 128 conversations (~200k tokens/step), dynamic batching into
+#          <=4k-token microbatches. No sequence packing: the DTensor path passes HF
+#          flash_attn_kwargs, but Automodel NemotronV3 only splits documents on
+#          qkv_format="thd" + cu_seqlens, so packed documents would attend across each other.
+#   memory full activation checkpointing, to leave room for the loss logits.
+defaults: ../RL/examples/configs/recipes/llm/sft-nanov3-30BA3B-2n8g-fsdp2.yaml
+sft:
+  max_num_steps: 30
+  val_period: 0
+  val_at_start: false
+  val_at_end: false
+checkpointing:
+  enabled: false
+policy:
+  tokenizer:
+    # The Base checkpoint has no chat template; the Instruct tokenizer has the same vocab.
+    name: nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16
+    chat_template: default
+  train_global_batch_size: 128
+  train_micro_batch_size: 1
+  max_total_sequence_length: 4096
+  make_sequence_length_divisible_by: 64
+  dynamic_batching:
+    enabled: true
+    train_mb_tokens: 4096
+    sequence_length_round: 64
+  dtensor_cfg:
+    activation_checkpointing: true
+data:
+  add_generation_prompt: false
+  train:
+    dataset_name: openai_format
+    data_path: /mnt/scratch/chloe_wong/data/cascade2/chat_20k_seed0.jsonl
+  validation: null
+  default:
+    prompt_file: null
+    system_prompt_file: null
+    processor: sft_processor
+cluster:
+  gpus_per_node: 8
+  num_nodes: 1

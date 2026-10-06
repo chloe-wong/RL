@@ -1,0 +1,6 @@
+# Allocator experiment A1: the 8k chunked-CE + bf16-output config without the
+# torch.cuda.empty_cache() that train() runs at the end of every step.
+defaults: sft-nanov3-cascade2chat-8k-chunkedce-bf16out-1n8g.yaml
+policy:
+  dtensor_cfg:
+    empty_cache_after_train: false

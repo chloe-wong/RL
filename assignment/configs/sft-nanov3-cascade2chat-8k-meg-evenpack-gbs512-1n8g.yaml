@@ -1,0 +1,4 @@
+# Megatron evenpack + global batch 512 (amortizes per-step grad/param collectives and optimizer).
+defaults: sft-nanov3-cascade2chat-8k-meg-evenpack-1n8g.yaml
+policy:
+  train_global_batch_size: 512

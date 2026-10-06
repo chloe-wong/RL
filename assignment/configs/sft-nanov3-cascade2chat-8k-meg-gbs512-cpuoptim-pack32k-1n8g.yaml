@@ -1,0 +1,5 @@
+# CPU optimizer + 32k-token packs (bigger expert GEMMs, fewer microbatches).
+defaults: sft-nanov3-cascade2chat-8k-meg-gbs512-cpuoptim-1n8g.yaml
+policy:
+  sequence_packing:
+    train_mb_tokens: 32768

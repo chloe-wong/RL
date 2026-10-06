@@ -1,0 +1,8 @@
+# 8k-context variant of sft-nanov3-cascade2chat-4k-1n8g.yaml, enabled by chunked
+# cross-entropy (policy.logprob_chunk_size) in the SFT loss. Everything else is the same.
+defaults: sft-nanov3-cascade2chat-4k-1n8g.yaml
+policy:
+  max_total_sequence_length: 8192
+  logprob_chunk_size: 1024
+  dynamic_batching:
+    train_mb_tokens: 8192

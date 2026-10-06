@@ -1,0 +1,7 @@
+# 8k chunked-CE variant with bf16 FSDP module outputs. With float32 outputs (the NeMo RL
+# default), the logits and their gradient are full-size float32 (~4 GiB each at 8k);
+# the chunked loss still upcasts each chunk to float32.
+defaults: sft-nanov3-cascade2chat-8k-chunkedce-1n8g.yaml
+policy:
+  dtensor_cfg:
+    fsdp_output_dtype: bfloat16

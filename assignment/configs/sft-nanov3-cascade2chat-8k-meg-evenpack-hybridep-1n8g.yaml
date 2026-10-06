@@ -1,0 +1,10 @@
+# Megatron evenpack + HybridEP flex dispatcher.
+defaults: sft-nanov3-cascade2chat-8k-meg-evenpack-1n8g.yaml
+policy:
+  megatron_cfg:
+    moe_router_dtype: fp32
+    moe_token_dispatcher_type: flex
+    moe_flex_dispatcher_backend: hybridep
+    moe_hybridep_num_sms: 32
+    hybridep_num_ranks_per_nvlink_domain: 8
+    hybridep_use_mnnvl: false

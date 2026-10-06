@@ -1,0 +1,6 @@
+# BF16 evenpack with NVLS off (memory and speed control).
+defaults: sft-nanov3-cascade2chat-8k-meg-evenpack-1n8g.yaml
+policy:
+  megatron_cfg:
+    env_vars:
+      NCCL_NVLS_ENABLE: "0"

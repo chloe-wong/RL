@@ -1,0 +1,7 @@
+# Megatron try8 + DeepEP flex dispatcher.
+defaults: sft-nanov3-cascade2chat-8k-megatron-1n8g.yaml
+policy:
+  megatron_cfg:
+    moe_token_dispatcher_type: flex
+    moe_enable_deepep: true
+    moe_flex_dispatcher_backend: deepep

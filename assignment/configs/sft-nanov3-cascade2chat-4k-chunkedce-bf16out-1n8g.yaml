@@ -1,0 +1,7 @@
+# 4k workload with chunked cross-entropy and bf16 FSDP outputs: loss-parity and
+# throughput check against sft-nanov3-cascade2chat-4k-1n8g.yaml (same data order).
+defaults: sft-nanov3-cascade2chat-4k-1n8g.yaml
+policy:
+  logprob_chunk_size: 1024
+  dtensor_cfg:
+    fsdp_output_dtype: bfloat16

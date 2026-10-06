@@ -1,0 +1,8 @@
+# 8k chunked-CE variant plus expandable_segments. With chunked CE alone, step 3 OOMed
+# allocating 3.81 GiB (the fp32 logits that FSDP output_dtype=float32 produces) while
+# 6.84 GiB sat reserved but unallocated: fragmentation.
+defaults: sft-nanov3-cascade2chat-8k-chunkedce-1n8g.yaml
+policy:
+  dtensor_cfg:
+    env_vars:
+      PYTORCH_CUDA_ALLOC_CONF: "expandable_segments:True"

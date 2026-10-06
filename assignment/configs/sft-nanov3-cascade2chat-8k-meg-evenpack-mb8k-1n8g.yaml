@@ -1,0 +1,5 @@
+# BF16 evenpack with 8k-token packs (control for the FP8 mb8k run).
+defaults: sft-nanov3-cascade2chat-8k-meg-evenpack-1n8g.yaml
+policy:
+  sequence_packing:
+    train_mb_tokens: 8192

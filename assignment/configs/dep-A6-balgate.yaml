@@ -1,0 +1,22 @@
+# DeepEP arm A6: fake_balanced_gate=true. DIAGNOSTIC ONLY -- this overrides the router,
+# so the loss is meaningless and it must never be reported as a training result.
+#
+# It forces every expert to receive an equal share of tokens, which bounds how much of
+# DeepEP's 3,538 ms is expert load imbalance versus intrinsic dispatch cost. That decides
+# whether capacity-factor / load-balancing work is worth doing at all.
+defaults: sft-nanov3-cascade2chat-8k-best-1n8g.yaml
+policy:
+  dtensor_cfg:
+    automodel_kwargs:
+      backend:
+        _target_: nemo_automodel.components.models.common.utils.BackendConfig
+        attn: te
+        linear: te
+        rms_norm: torch_fp32
+        experts: torch_mm
+        dispatcher: deepep
+        dispatcher_num_sms: 20
+        dispatcher_async_dispatch: false
+        fake_balanced_gate: true
+        enable_hf_state_dict_adapter: true
+        rope_fusion: false

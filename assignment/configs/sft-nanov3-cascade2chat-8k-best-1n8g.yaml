@@ -1,0 +1,12 @@
+# Best measured setup for the Nemotron-Cascade-2 chat SFT workload on 1 node x 8 H100:
+# 8k context on sft-nanov3-cascade2chat-4k-1n8g.yaml plus
+#   chunked cross-entropy        policy.logprob_chunk_size
+#   bf16 FSDP module outputs     policy.dtensor_cfg.fsdp_output_dtype
+#   expandable_segments, and no per-step empty_cache()  (allocator experiment A2)
+#   fused AdamW                  (optimizer experiment O1)
+defaults: sft-nanov3-cascade2chat-8k-chunkedce-bf16out-expseg-nocache-1n8g.yaml
+policy:
+  optimizer:
+    kwargs:
+      foreach: false
+      fused: true

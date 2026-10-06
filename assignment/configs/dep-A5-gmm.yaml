@@ -1,0 +1,19 @@
+# DeepEP arm A5: experts=gmm.
+# The Track B base sets the removed enable_deepep=True key, whose documented
+# meaning was experts=gmm + dispatcher=deepep. It is ignored, so the run has been
+# getting experts=torch_mm. This is what the config was asking for.
+defaults: sft-nanov3-cascade2chat-8k-best-1n8g.yaml
+policy:
+  dtensor_cfg:
+    automodel_kwargs:
+      backend:
+        _target_: nemo_automodel.components.models.common.utils.BackendConfig
+        attn: te
+        linear: te
+        rms_norm: torch_fp32
+        experts: gmm
+        dispatcher: deepep
+        dispatcher_num_sms: 20
+        dispatcher_async_dispatch: false
+        enable_hf_state_dict_adapter: true
+        rope_fusion: false

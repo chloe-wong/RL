@@ -1,0 +1,8 @@
+# Allocator experiment A2: expandable_segments (no fragmentation OOMs) without the
+# per-step empty_cache(), which would unmap and remap every expandable segment.
+defaults: sft-nanov3-cascade2chat-8k-chunkedce-bf16out-1n8g.yaml
+policy:
+  dtensor_cfg:
+    empty_cache_after_train: false
+    env_vars:
+      PYTORCH_CUDA_ALLOC_CONF: "expandable_segments:True"

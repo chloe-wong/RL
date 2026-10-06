@@ -1,0 +1,7 @@
+# Allocator experiment A3: expandable_segments with the per-step empty_cache() kept
+# (the stable "memfix" setup), rerun with allocator stats for comparison with A2.
+defaults: sft-nanov3-cascade2chat-8k-chunkedce-bf16out-1n8g.yaml
+policy:
+  dtensor_cfg:
+    env_vars:
+      PYTORCH_CUDA_ALLOC_CONF: "expandable_segments:True"

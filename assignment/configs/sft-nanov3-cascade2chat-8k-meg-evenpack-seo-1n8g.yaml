@@ -1,0 +1,5 @@
+# Megatron evenpack + shared-expert compute overlapped with the MoE all-to-all.
+defaults: sft-nanov3-cascade2chat-8k-meg-evenpack-1n8g.yaml
+policy:
+  megatron_cfg:
+    moe_shared_expert_overlap: true
