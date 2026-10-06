@@ -13,6 +13,8 @@
 # limitations under the License.
 
 import gc
+import os
+import time
 import warnings
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from typing import Any, Generator, Iterable, Optional
@@ -464,6 +466,11 @@ class DTensorPolicyWorkerV2Impl(
             if empty_cache_steps and mb_idx % empty_cache_steps == 0:
                 torch.cuda.empty_cache()
 
+        log_alloc_stats = os.environ.get("NRL_LOG_ALLOCATOR_STATS") == "1"
+        if log_alloc_stats:
+            alloc_stats_start = torch.cuda.memory_stats()
+            torch.cuda.reset_peak_memory_stats()
+
         with ctx:
             # Get data from batch and move to device
             data = data.to("cuda")
@@ -534,6 +541,10 @@ class DTensorPolicyWorkerV2Impl(
 
                 grad_norm: Optional[float | torch.Tensor] = None
                 if not eval_mode:
+                    log_optim_time = os.environ.get("NRL_LOG_OPTIM_TIME") == "1"
+                    if log_optim_time:
+                        torch.cuda.synchronize()
+                        t_clip = time.perf_counter()
                     grad_norm = scale_grads_and_clip_grad_norm(
                         self.max_grad_norm,
                         [self.model],
@@ -554,10 +565,20 @@ class DTensorPolicyWorkerV2Impl(
                         grad_norm, device="cpu", dtype=torch.float32
                     )
                     warn_if_inf_grad_norm(grad_norm)
+                    if log_optim_time:
+                        torch.cuda.synchronize()
+                        t_step = time.perf_counter()
 
                     # Update parameters and the non-gradient MoE routing bias.
                     self.optimizer.step()
                     self._update_moe_gate_bias_if_supported()
+                    if log_optim_time and self.rank == 0:
+                        torch.cuda.synchronize()
+                        print(
+                            f"[optim] clip_ms={1e3 * (t_step - t_clip):.1f} "
+                            f"step_ms={1e3 * (time.perf_counter() - t_step):.1f}",
+                            flush=True,
+                        )
 
                 losses.append(torch.tensor(mb_losses).sum().item())
 
@@ -566,6 +587,20 @@ class DTensorPolicyWorkerV2Impl(
             # increment scheduler after all batches in rollout are processed
             if not eval_mode:
                 self.scheduler.step()
+            if log_alloc_stats and self.rank == 0:
+                end = torch.cuda.memory_stats()
+                delta = {
+                    k: end.get(k, 0) - alloc_stats_start.get(k, 0)
+                    for k in ("num_device_alloc", "num_device_free", "num_alloc_retries", "num_ooms")
+                }
+                print(
+                    f"[allocator] cudaMalloc={delta['num_device_alloc']} "
+                    f"cudaFree={delta['num_device_free']} "
+                    f"alloc_retries={delta['num_alloc_retries']} ooms={delta['num_ooms']} "
+                    f"peak_allocated_gib={torch.cuda.max_memory_allocated() / 2**30:.1f} "
+                    f"peak_reserved_gib={torch.cuda.max_memory_reserved() / 2**30:.1f}",
+                    flush=True,
+                )
             # dynamic batch and sequence dims causes alot of fragmentation, so clear
             # the memory allocator before moving on
             if self.cfg["dtensor_cfg"].get("empty_cache_after_train", True):
