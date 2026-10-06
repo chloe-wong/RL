@@ -247,14 +247,20 @@ distributed_data_parallel_config:
 This is independent validation of the collectives findings: the three things identified as
 missing are precisely the three things the faster backend has.
 
-### Sequence packing: broken on DTensor, working and worth +36% on Megatron
+### Sequence packing: broken on DTensor, working and worth +21.6% on Megatron
 
 Section 3.1 proved packing is silently incorrect on the DTensor path -- `cu_seqlens` absent,
 Mamba `seq_idx` None, so tokens attend across document boundaries. Megatron packs with
 `algorithm: even_bin_count` at `train_mb_tokens: 16384` and it works:
 
-- `meg_deepep` (no even packing): 13.985%
-- `meg_evenpack`: **18.985%**, i.e. **+36%**
+- `megatron-try8` (base config, default packing algorithm): 15.615%
+- `meg_evenpack`: **18.985%**, i.e. **+21.6%**
+
+Both are the base config plus exactly one change, 30 steps each. An earlier version of this
+section compared against `meg_deepep` (13.985%) and called it "no even packing", giving
++36%. That is wrong: `meg_deepep` is the base plus the **DeepEP flex dispatcher**, so the
+comparison moved two variables at once. Read the other way, the same pair shows DeepEP
+costs 10.4% on Megatron.
 
 So packing is not a bad idea; it is a broken implementation on one backend.
 
