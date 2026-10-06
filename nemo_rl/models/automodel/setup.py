@@ -520,7 +520,9 @@ def setup_distributed(
         mp_policy=MixedPrecisionPolicy(
             param_dtype=dtype,
             reduce_dtype=torch.float32,
-            output_dtype=torch.float32,
+            output_dtype=STRING_TO_DTYPE[
+                config["dtensor_cfg"].get("fsdp_output_dtype", "float32")
+            ],
         ),
         offload_policy=CPUOffloadPolicy(pin_memory=False) if cpu_offload else None,
         activation_checkpointing=config["dtensor_cfg"]["activation_checkpointing"],

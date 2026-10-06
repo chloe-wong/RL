@@ -213,6 +213,10 @@ class DTensorConfig(TypedDict):
     cpu_offload: bool
     custom_parallel_plan: NotRequired[str | None]
     defer_fsdp_grad_sync: NotRequired[bool]
+    # dtype FSDP2 casts each module's output to ("float32" or "bfloat16"). Default
+    # "float32". "bfloat16" halves the logits and the checkpointed block outputs; pair
+    # it with logprob_chunk_size so the loss still runs in float32 per chunk.
+    fsdp_output_dtype: NotRequired[str]
     # MoE parallelizer config
     moe_parallelizer: NotRequired[MoEParallelizerOptions]
     # Model config
