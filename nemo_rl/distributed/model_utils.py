@@ -15,6 +15,7 @@
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Optional
 
+import os
 import torch
 import torch.distributed.nn.functional
 from torch.distributed.tensor import DTensor, distribute_tensor
@@ -430,6 +431,45 @@ class ChunkedDistributedLogprob(torch.autograd.Function):
 
         # if you add an argument to the forward method, then you must add a corresponding None here
         return grad_input, None, None, None, None, None, None
+
+
+def _chunked_logprob_apply(
+    vocab_parallel_logits: torch.Tensor,
+    target: torch.Tensor,
+    vocab_start_index: int,
+    vocab_end_index: int,
+    chunk_size: int,
+    tp_group: torch.distributed.ProcessGroup,
+    inference_only: bool = False,
+) -> torch.Tensor:
+    """ChunkedDistributedLogprob, or the fused Triton kernel for unsharded vocab.
+
+    NRL_TRITON_LOGPROB=1 selects nemo_rl.distributed.triton_logprob.FusedLogprob
+    when the tensor-parallel group has one rank, so this rank holds the full vocab.
+    """
+    if (
+        os.environ.get("NRL_TRITON_LOGPROB") == "1"
+        and torch.distributed.get_world_size(tp_group) == 1
+    ):
+        from nemo_rl.distributed.triton_logprob import (
+            FusedLogprob,
+            fused_logprob_supported,
+        )
+
+        if fused_logprob_supported(vocab_parallel_logits):
+            if inference_only:
+                with torch.no_grad():
+                    return FusedLogprob.apply(vocab_parallel_logits, target)
+            return FusedLogprob.apply(vocab_parallel_logits, target)
+    return ChunkedDistributedLogprob.apply(
+        vocab_parallel_logits,
+        target,
+        vocab_start_index,
+        vocab_end_index,
+        chunk_size,
+        tp_group,
+        inference_only,
+    )
 
 
 class DistributedLogprobWithSampling(torch.autograd.Function):
@@ -941,7 +981,7 @@ def _tp_target_logprobs(
                 inference_only,
             ).contiguous()
         if chunk_size is not None:
-            return ChunkedDistributedLogprob.apply(  # type: ignore[no-any-return]
+            return _chunked_logprob_apply(  # type: ignore[no-any-return]
                 vocab_parallel_logits,
                 target,
                 vocab_start_index,
@@ -1192,7 +1232,7 @@ def from_parallel_logits_to_logprobs(
             ).contiguous()
     else:
         if chunk_size is not None:
-            logprobs: torch.Tensor = ChunkedDistributedLogprob.apply(  # type: ignore
+            logprobs: torch.Tensor = _chunked_logprob_apply(  # type: ignore
                 vocab_parallel_logits,
                 target,
                 vocab_start_index,
@@ -1319,7 +1359,7 @@ def from_parallel_logits_to_logprobs_packed_sequences(
             ).contiguous()
     else:
         if chunk_size is not None:
-            probs: torch.Tensor = ChunkedDistributedLogprob.apply(  # type: ignore
+            probs: torch.Tensor = _chunked_logprob_apply(  # type: ignore
                 vocab_parallel_logits,
                 target,
                 vocab_start_index,
@@ -1797,6 +1837,59 @@ def get_logprobs_from_vocab_parallel_logits(
     )
 
 
+class ChunkedNextTokenLogprob(torch.autograd.Function):
+    """Next-token log-probabilities from local (non-parallel) logits, in sequence chunks.
+
+    Equivalent to ``log_softmax(logits[:, :-1].float(), -1).gather(-1, next_tokens)``
+    but never materializes the full float32 logits or log-softmax. Forward keeps only
+    the per-position log-sum-exp; backward recomputes each chunk's softmax and writes
+    the gradient directly in the logits dtype. It takes the full logits (including the
+    last position) so autograd does not allocate a second full-size gradient for a
+    ``[:, :-1]`` slice.
+    """
+
+    @staticmethod
+    def forward(  # pyrefly: ignore[bad-override]
+        ctx: Any,
+        logits: torch.Tensor,  # [B, S, V]
+        next_tokens: torch.Tensor,  # [B, S - 1]
+        chunk_size: int,
+    ) -> torch.Tensor:
+        B, S, _ = logits.shape
+        out = torch.empty(B, S - 1, dtype=torch.float32, device=logits.device)
+        lse = torch.empty(B, S - 1, dtype=torch.float32, device=logits.device)
+        for s0 in range(0, S - 1, chunk_size):
+            s1 = min(S - 1, s0 + chunk_size)
+            chunk = logits[:, s0:s1, :].float()
+            chunk_lse = torch.logsumexp(chunk, dim=-1)
+            target = chunk.gather(-1, next_tokens[:, s0:s1].unsqueeze(-1)).squeeze(-1)
+            out[:, s0:s1] = target - chunk_lse
+            lse[:, s0:s1] = chunk_lse
+            del chunk
+        ctx.save_for_backward(logits, next_tokens, lse)
+        ctx.chunk_size = chunk_size
+        return out
+
+    @staticmethod
+    def backward(ctx: Any, *grad_outputs: torch.Tensor) -> tuple[torch.Tensor, None, None]:
+        grad_out = grad_outputs[0]  # [B, S - 1]
+        logits, next_tokens, lse = ctx.saved_tensors
+        chunk_size = ctx.chunk_size
+        S = logits.shape[1]
+        grad_logits = torch.empty_like(logits)
+        grad_logits[:, S - 1 :, :].zero_()  # the last position has no next token
+        for s0 in range(0, S - 1, chunk_size):
+            s1 = min(S - 1, s0 + chunk_size)
+            go = grad_out[:, s0:s1].unsqueeze(-1).float()  # [B, c, 1]
+            # d logprob[t] / d z = onehot(t) - softmax(z)
+            grad = (logits[:, s0:s1, :].float() - lse[:, s0:s1].unsqueeze(-1)).exp_()
+            grad.mul_(go.neg())
+            grad.scatter_add_(-1, next_tokens[:, s0:s1].unsqueeze(-1), go)
+            grad_logits[:, s0:s1, :] = grad.to(grad_logits.dtype)
+            del grad
+        return grad_logits, None, None
+
+
 def get_next_token_logprobs_from_logits(
     input_ids: torch.Tensor,
     next_token_logits: torch.Tensor,
@@ -1824,8 +1917,8 @@ def get_next_token_logprobs_from_logits(
         vocab_parallel_group: Process group for vocab parallelism
         context_parallel_group: Process group for context parallelism
         sampling_params: Sampling parameters for top-k/top-p filtering
-        chunk_size: Sequence-dim chunk size for the vocab-parallel path; only
-            applied without top-k/top-p sampling.
+        chunk_size: Sequence-dim chunk size for the vocab-parallel and local
+            (non-parallel) paths; only applied without top-k/top-p sampling.
         cp_sharder: Automodel ``ContextParallelSharder`` that sharded this
             forward's model batch (V2 automodel worker with cp_size > 1). When
             set, ``next_token_logits`` is this rank's CP-local shard and the
@@ -1834,13 +1927,19 @@ def get_next_token_logprobs_from_logits(
     Returns:
         Token log-probabilities of shape [batch_size, seq_len - 1]
     """
-    # ChunkedDistributedLogprob casts each chunk to float32 internally.
-    use_chunking = (
-        vocab_parallel_group is not None
-        and chunk_size is not None
-        and not need_top_k_or_top_p_filtering(sampling_params)
+    # ChunkedDistributedLogprob and ChunkedNextTokenLogprob cast each chunk to
+    # float32 internally, so the full logits stay in their original dtype.
+    can_chunk = chunk_size is not None and not need_top_k_or_top_p_filtering(
+        sampling_params
     )
-    if not use_chunking:
+    use_chunking = vocab_parallel_group is not None and can_chunk
+    use_local_chunking = (
+        can_chunk
+        and vocab_parallel_group is None
+        and cp_sharder is None
+        and not isinstance(next_token_logits, torch.distributed.tensor.DTensor)
+    )
+    if not (use_chunking or use_local_chunking):
         next_token_logits = next_token_logits.to(torch.float32)
 
     if vocab_parallel_group is not None:
@@ -1876,6 +1975,12 @@ def get_next_token_logprobs_from_logits(
             input_ids,
             seq_index=seq_index,
             sampling_params=sampling_params,
+        )
+
+    elif use_local_chunking:
+        next_tokens = input_ids[:, 1:].to(next_token_logits.device)
+        logprobs = ChunkedNextTokenLogprob.apply(
+            next_token_logits, next_tokens, chunk_size
         )
 
     else:
