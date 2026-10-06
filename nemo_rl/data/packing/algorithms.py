@@ -31,6 +31,7 @@ class PackingAlgorithm(enum.Enum):
     MODIFIED_FIRST_FIT_DECREASING = "modified_first_fit_decreasing"
     GREEDY_KNAPSACK = "greedy_knapsack"
     BALANCED_GREEDY_KNAPSACK = "balanced_greedy_knapsack"
+    EVEN_BIN_COUNT = "even_bin_count"
 
 
 class SequencePacker(ABC):
@@ -362,6 +363,52 @@ class BalancedGreedyKnapsackPacker(SequencePacker):
             bins[target].append(index)
             loads[target] += sequence_lengths[index]
         return [bin_indexes for bin_indexes in bins if bin_indexes]
+
+
+class EvenBinCountPacker(SequencePacker):
+    """Fill a fixed number of bins evenly, longest sequence first.
+
+    The bin count is ceil(total / capacity), raised to meet min_bin_count and
+    bin_count_multiple. If a sequence fits in no bin, the count grows by one
+    multiple and packing restarts. Near-equal bin loads keep data-parallel ranks
+    balanced when bins are dealt round-robin.
+    """
+
+    def _pack_implementation(self, sequence_lengths: List[int]) -> List[List[int]]:
+        """Place each sequence into the least-full bin that can accept it."""
+        self._validate_sequence_lengths(sequence_lengths)
+        if not sequence_lengths:
+            return []
+        step = self.bin_count_multiple or 1
+        count = math.ceil(sum(sequence_lengths) / self.bin_capacity)
+        count = max(count, self.min_bin_count or 0)
+        count = math.ceil(count / step) * step
+        order = sorted(
+            range(len(sequence_lengths)),
+            key=sequence_lengths.__getitem__,
+            reverse=True,
+        )
+        while True:
+            bins: List[List[int]] = [[] for _ in range(count)]
+            loads = [0] * count
+            for index in order:
+                length = sequence_lengths[index]
+                target = None
+                for i in range(count):
+                    if loads[i] + length > self.bin_capacity or (
+                        self.max_sequences_per_bin is not None
+                        and len(bins[i]) >= self.max_sequences_per_bin
+                    ):
+                        continue
+                    if target is None or loads[i] < loads[target]:
+                        target = i
+                if target is None:
+                    break
+                bins[target].append(index)
+                loads[target] += length
+            else:
+                return [bin_indexes for bin_indexes in bins if bin_indexes]
+            count += step
 
 
 class ConcatenativePacker(SequencePacker):
@@ -773,6 +820,7 @@ def get_packer(
         PackingAlgorithm.MODIFIED_FIRST_FIT_DECREASING: ModifiedFirstFitDecreasingPacker,
         PackingAlgorithm.GREEDY_KNAPSACK: GreedyKnapsackPacker,
         PackingAlgorithm.BALANCED_GREEDY_KNAPSACK: BalancedGreedyKnapsackPacker,
+        PackingAlgorithm.EVEN_BIN_COUNT: EvenBinCountPacker,
     }
 
     # Convert string to enum if needed
